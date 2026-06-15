@@ -18,7 +18,7 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-type Data map[string]any
+type Data = map[string]any
 
 type DataFormat int
 
@@ -111,8 +111,36 @@ func (df *DataFile) Type() string {
 	return "datafile"
 }
 
+type Value struct {
+	Path  string
+	Value any
+}
+
+func (v *Value) String() string {
+	return fmt.Sprintf("%s: %v", v.Path, v.Value)
+}
+
+func (v *Value) Type() string {
+	return "value"
+}
+
+func (v *Value) Set(value string) error {
+	parts := strings.SplitN(value, "=", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid value specification: %s", value)
+	}
+	v.Path = parts[0]
+	var parsed any
+	if err := json.Unmarshal([]byte(parts[1]), &parsed); err != nil {
+		return fmt.Errorf("failed to parse value: %w", err)
+	}
+	v.Value = parsed
+	return nil
+}
+
 type Options struct {
 	DataFiles    []DataFile
+	Values       []Value
 	TemplateFile string
 	Debug        bool
 	Outfile      *string
@@ -122,6 +150,8 @@ type Options struct {
 func ParseOptions() (*Options, error) {
 	var dataFileSpecs []string
 	var dataFiles []DataFile
+	var valueSpecs []string
+	var values []Value
 	var templateFile string
 	var debug bool
 	var functions bool
@@ -140,6 +170,7 @@ func ParseOptions() (*Options, error) {
 	}
 
 	pflag.StringArrayVarP(&dataFileSpecs, "data", "d", []string{}, "data file (YAML, TOML, JSON); use '-,format' to read from stdin; use 'filename,format' to force format")
+	pflag.StringArrayVarP(&valueSpecs, "set", "s", []string{}, "set a single value (key=value) where value is JSON; can be used multiple times")
 	pflag.BoolVarP(&debug, "debug", "g", false, "enable debug logging")
 	pflag.BoolVarP(&functions, "functions", "f", false, "list available Sprig template functions and exit")
 	pflag.StringVarP(outfile, "outfile", "o", "", "write output to file instead of stdout")
@@ -164,6 +195,16 @@ func ParseOptions() (*Options, error) {
 		stdinUsed = stdinUsed || df.Filename == "-"
 		dataFiles[i] = df
 	}
+
+	values = make([]Value, len(valueSpecs))
+	for i, spec := range valueSpecs {
+		var v Value
+		if err := v.Set(spec); err != nil {
+			return nil, fmt.Errorf("invalid value specification: %w", err)
+		}
+		values[i] = v
+	}
+
 	if pflag.NArg() < 1 {
 		if stdinUsed {
 			return nil, fmt.Errorf("template file is required")
@@ -184,6 +225,7 @@ func ParseOptions() (*Options, error) {
 
 	return &Options{
 		DataFiles:    dataFiles,
+		Values:       values,
 		TemplateFile: templateFile,
 		Debug:        debug,
 		Outfile:      outfile,
@@ -214,6 +256,12 @@ func (opts *Options) Data() (Data, error) {
 			return nil, fmt.Errorf("failed to parse data file %s: %w", df.Filename, err)
 		}
 
+	}
+	for _, v := range opts.Values {
+		opts.Debugf("setting value %s", v.String())
+		if err := digSet(data, v.Path, v.Value); err != nil {
+			return nil, fmt.Errorf("failed to set value %s: %w", v.String(), err)
+		}
 	}
 	opts.Debugf("loaded %d top-level data keys", len(data))
 	return data, nil

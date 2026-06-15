@@ -21,6 +21,7 @@ If `template-file` is omitted, the template is read from **stdin**. Stdin cannot
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--data <file>` | `-d` | Data file to load (repeatable; later files override earlier keys) |
+| `--set <path=json>` | `-s` | Set a single value at a dotted path; value is parsed as JSON (repeatable) |
 | `--outfile <file>` | `-o` | Write output to a file instead of stdout |
 | `--functions` | `-f` | List all available Sprig template functions and exit |
 | `--debug` | `-g` | Enable debug logging |
@@ -48,6 +49,21 @@ echo 'Hello, {{.name}}!' | gotmplt -d data.yaml
 ```
 
 Multiple `-d` flags are merged in order — later files overwrite conflicting keys.
+
+### Setting values from the command line
+
+Use `--set` (`-s`) to override or inject individual values without editing a data file. The argument is `path=json`, where `path` is a dot-separated key path and `json` is a JSON literal:
+
+```sh
+gotmplt -d data.yaml \
+  -s 'format="overridden"' \
+  -s 'version=42' \
+  -s 'feature.enabled=true' \
+  -s 'contact.address.city="Boston"' \
+  template.txt
+```
+
+`--set` runs after all `-d` files load, so it overrides them. Intermediate maps along the path are created as needed.
 
 ## Example
 
@@ -126,6 +142,20 @@ gotmplt --functions
 ```
 
 Full documentation: <https://masterminds.github.io/sprig/>
+
+## Testing
+
+Unit tests:
+
+```sh
+go test ./...
+```
+
+CLI functional tests (builds the binary, exercises every flag including stdin paths):
+
+```sh
+bash tests/cli_test.sh
+```
 
 ## Dependencies
 

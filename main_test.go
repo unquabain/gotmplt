@@ -355,6 +355,107 @@ func TestOptions_OutStream_FileError(t *testing.T) {
 	}
 }
 
+func TestValue_Set_StringValue(t *testing.T) {
+	var v Value
+	if err := v.Set("name=\"alice\""); err != nil {
+		t.Fatalf("Set error: %v", err)
+	}
+	if v.Path != "name" {
+		t.Errorf("Path = %q, want %q", v.Path, "name")
+	}
+	if v.Value != "alice" {
+		t.Errorf("Value = %v, want \"alice\"", v.Value)
+	}
+}
+
+func TestValue_Set_NumberValue(t *testing.T) {
+	var v Value
+	if err := v.Set("age=30"); err != nil {
+		t.Fatalf("Set error: %v", err)
+	}
+	if v.Path != "age" {
+		t.Errorf("Path = %q, want %q", v.Path, "age")
+	}
+	if v.Value != float64(30) {
+		t.Errorf("Value = %v (%T), want float64(30)", v.Value, v.Value)
+	}
+}
+
+func TestValue_Set_NestedPath(t *testing.T) {
+	var v Value
+	if err := v.Set("contact.name=\"alice\""); err != nil {
+		t.Fatalf("Set error: %v", err)
+	}
+	if v.Path != "contact.name" {
+		t.Errorf("Path = %q, want %q", v.Path, "contact.name")
+	}
+	if v.Value != "alice" {
+		t.Errorf("Value = %v, want \"alice\"", v.Value)
+	}
+}
+
+func TestValue_Set_BoolValue(t *testing.T) {
+	var v Value
+	if err := v.Set("enabled=true"); err != nil {
+		t.Fatalf("Set error: %v", err)
+	}
+	if v.Value != true {
+		t.Errorf("Value = %v (%T), want true", v.Value, v.Value)
+	}
+}
+
+func TestValue_Set_InvalidFormat(t *testing.T) {
+	var v Value
+	if err := v.Set("noequalshere"); err == nil {
+		t.Error("expected error for missing '='")
+	}
+}
+
+func TestValue_Set_InvalidJSON(t *testing.T) {
+	var v Value
+	if err := v.Set("key={not json"); err == nil {
+		t.Error("expected error for invalid JSON value")
+	}
+}
+
+func TestValue_Type(t *testing.T) {
+	var v Value
+	if got := v.Type(); got != "value" {
+		t.Errorf("Type() = %q, want %q", got, "value")
+	}
+}
+
+func TestOptions_Data_AppliesValues(t *testing.T) {
+	dir := t.TempDir()
+	yamlPath := writeFile(t, dir, "a.yaml", "name: alice\ncontact:\n  city: Boston\n")
+	opts := &Options{
+		DataFiles: []DataFile{{DataFormat: FormatYAML, Filename: yamlPath}},
+		Values: []Value{
+			{Path: "name", Value: "bob"},
+			{Path: "contact.city", Value: "Seattle"},
+			{Path: "extra", Value: float64(42)},
+		},
+		Interface: log.Log,
+	}
+	data, err := opts.Data()
+	if err != nil {
+		t.Fatalf("Data() error: %v", err)
+	}
+	if data["name"] != "bob" {
+		t.Errorf("name = %v, want \"bob\" (--set should override file value)", data["name"])
+	}
+	contact, ok := data["contact"].(map[string]any)
+	if !ok {
+		t.Fatalf("contact = %v (%T), want map", data["contact"], data["contact"])
+	}
+	if contact["city"] != "Seattle" {
+		t.Errorf("contact.city = %v, want \"Seattle\"", contact["city"])
+	}
+	if data["extra"] != float64(42) {
+		t.Errorf("extra = %v, want 42", data["extra"])
+	}
+}
+
 func TestEndToEnd_OverrideOrderRendersThroughTemplate(t *testing.T) {
 	// Higher-level check: data from multiple files reaches the template
 	// in the expected merged form.
