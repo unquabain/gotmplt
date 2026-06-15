@@ -1,0 +1,4 @@
+format: yaml
+contact:
+  name: "John Doe"
+  email: "jdoe@example.com"

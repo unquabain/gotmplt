@@ -1,0 +1,14 @@
+The most recent data file was in {{.format}} format.
+
+Contact data:
+	name: {{.contact.name}}
+	email: {{.contact.email}}
+
+Contact JSON:
+{{.contact | toPrettyJson}}
+
+Version: {{.version}}
+
+Database:
+	server: {{.database.server | quote }}
+
