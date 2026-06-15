@@ -267,8 +267,8 @@ type Must[T any] struct {
 	Args    []any
 }
 
-func ifErr(err error) Must[struct{}] {
-	return Must[struct{}]{Err: err}
+func ifErr(err error) *Must[struct{}] {
+	return &Must[struct{}]{Err: err}
 }
 
 func must[T any](value T, err error) *Must[T] {
@@ -296,5 +296,5 @@ func main() {
 	outStream := must(opts.OutStream()).OrDie("Failed to open output stream")
 	defer outStream.Close()
 
-	ifErr(tmpl.Execute(outStream, data))
+	ifErr(tmpl.Execute(outStream, data)).OrDie("Failed to execute template")
 }
