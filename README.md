@@ -33,6 +33,12 @@ Format is inferred from the file extension. To specify it explicitly, use `filen
 gotmplt -d mydata,yaml template.txt
 ```
 
+To read data from **stdin**, use `-` as the filename with an explicit format:
+
+```sh
+echo '{"name": "world"}' | gotmplt -d -,json template.txt
+```
+
 Multiple `-d` flags are merged in order — later files overwrite conflicting keys.
 
 ## Example

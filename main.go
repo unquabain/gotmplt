@@ -130,7 +130,7 @@ func ParseOptions() (*Options, error) {
 
 	log.SetHandler(text.New(os.Stderr))
 
-	pflag.StringArrayVarP(&dataFileSpecs, "data", "d", []string{}, "Data file(s) to use (YAML, TOML, JSON); use 'filename,format' to specify format explicitly, if not inferred from extension")
+	pflag.StringArrayVarP(&dataFileSpecs, "data", "d", []string{}, "Data file(s) to use (YAML, TOML, JSON); use '-,format' to read from stdin; use 'filename,format' to specify format explicitly, if not inferred from extension")
 	pflag.BoolVarP(&debug, "debug", "g", false, "Enable debug mode")
 	pflag.BoolVarP(&functions, "functions", "f", false, "List available template functions and exit")
 	pflag.StringVarP(outfile, "outfile", "o", "", "Output file (default: stdout)")
@@ -176,11 +176,18 @@ func ParseOptions() (*Options, error) {
 func (opts *Options) Data() (Data, error) {
 	opts.Debugf("loading data from %d file(s)", len(opts.DataFiles))
 	data := make(Data)
+	var file io.ReadCloser
+	var err error
 	for _, df := range opts.DataFiles {
 		opts.Debugf("opening data file %s", df.String())
-		file, err := os.Open(df.Filename)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open data file %s: %w", df.Filename, err)
+		if df.Filename == "-" {
+			opts.Debugf("reading data from stdin")
+			file = os.Stdin
+		} else {
+			file, err = os.Open(df.Filename)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open data file %s: %w", df.Filename, err)
+			}
 		}
 		defer file.Close()
 
