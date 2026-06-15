@@ -261,10 +261,8 @@ func (opts *Options) Template() (*template.Template, error) {
 }
 
 type Must[T any] struct {
-	Value   T
-	Err     error
-	Message string
-	Args    []any
+	Value T
+	Err   error
 }
 
 func ifErr(err error) *Must[struct{}] {
