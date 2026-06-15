@@ -116,7 +116,6 @@ type Options struct {
 	TemplateFile string
 	Debug        bool
 	Outfile      *string
-	Functions    bool
 	log.Interface
 }
 
@@ -126,14 +125,24 @@ func ParseOptions() (*Options, error) {
 	var templateFile string
 	var debug bool
 	var functions bool
+	var stdinUsed bool
 	var outfile = new(string)
 
 	log.SetHandler(text.New(os.Stderr))
 
-	pflag.StringArrayVarP(&dataFileSpecs, "data", "d", []string{}, "Data file(s) to use (YAML, TOML, JSON); use '-,format' to read from stdin; use 'filename,format' to specify format explicitly, if not inferred from extension")
-	pflag.BoolVarP(&debug, "debug", "g", false, "Enable debug mode")
-	pflag.BoolVarP(&functions, "functions", "f", false, "List available template functions and exit")
-	pflag.StringVarP(outfile, "outfile", "o", "", "Output file (default: stdout)")
+	pflag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: gotmplt [flags] [template-file]\n\n")
+		fmt.Fprintf(os.Stderr, "Renders a Go template with data from YAML, TOML, or JSON files.\n\n")
+		fmt.Fprintf(os.Stderr, "If template-file is omitted, the template is read from stdin.\n")
+		fmt.Fprintf(os.Stderr, "Stdin cannot be used for both a data file (-d -,format) and the template.\n\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		pflag.PrintDefaults()
+	}
+
+	pflag.StringArrayVarP(&dataFileSpecs, "data", "d", []string{}, "data file (YAML, TOML, JSON); use '-,format' to read from stdin; use 'filename,format' to force format")
+	pflag.BoolVarP(&debug, "debug", "g", false, "enable debug logging")
+	pflag.BoolVarP(&functions, "functions", "f", false, "list available Sprig template functions and exit")
+	pflag.StringVarP(outfile, "outfile", "o", "", "write output to file instead of stdout")
 
 	pflag.Parse()
 
@@ -152,12 +161,21 @@ func ParseOptions() (*Options, error) {
 		if err := df.Set(spec); err != nil {
 			return nil, fmt.Errorf("invalid data file specification: %w", err)
 		}
+		stdinUsed = stdinUsed || df.Filename == "-"
 		dataFiles[i] = df
 	}
 	if pflag.NArg() < 1 {
-		return nil, fmt.Errorf("template file is required")
+		if stdinUsed {
+			return nil, fmt.Errorf("template file is required")
+		}
+		templateFile = "-"
+	} else {
+		templateFile = pflag.Arg(0)
 	}
-	templateFile = pflag.Arg(0)
+	if templateFile == "-" && stdinUsed {
+		return nil, fmt.Errorf("cannot read both data and template from stdin")
+	}
+
 	if debug {
 		log.SetLevel(log.DebugLevel)
 	} else {
@@ -215,12 +233,22 @@ func (opts *Options) OutStream() (io.WriteCloser, error) {
 }
 
 func (opts *Options) Template() (*template.Template, error) {
+	var content []byte
+	var err error
 	if opts.TemplateFile == "" {
 		opts.Debugf("no template file provided")
 		return nil, fmt.Errorf("template file is required")
 	}
 	opts.Debugf("reading template file %s", opts.TemplateFile)
-	content, err := os.ReadFile(opts.TemplateFile)
+	if opts.TemplateFile == "-" {
+		opts.Debugf("reading template from stdin")
+		content, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read template from stdin: %w", err)
+		}
+	} else {
+		content, err = os.ReadFile(opts.TemplateFile)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to read template file %s: %w", opts.TemplateFile, err)
 	}

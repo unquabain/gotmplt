@@ -11,8 +11,10 @@ go install github.com/unquabain/gotmplt@latest
 ## Usage
 
 ```
-gotmplt [flags] <template-file>
+gotmplt [flags] [template-file]
 ```
+
+If `template-file` is omitted, the template is read from **stdin**. Stdin cannot be used for both a data file and the template simultaneously.
 
 ### Flags
 
@@ -37,6 +39,12 @@ To read data from **stdin**, use `-` as the filename with an explicit format:
 
 ```sh
 echo '{"name": "world"}' | gotmplt -d -,json template.txt
+```
+
+To read the **template** from stdin, omit the template file argument:
+
+```sh
+echo 'Hello, {{.name}}!' | gotmplt -d data.yaml
 ```
 
 Multiple `-d` flags are merged in order — later files overwrite conflicting keys.
