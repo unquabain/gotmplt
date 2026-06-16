@@ -191,6 +191,7 @@ bash tests/cli_test.sh
 ## Dependencies
 
 - [Sprig](https://github.com/Masterminds/sprig) — extended template functions
+- [gojq](https://github.com/itchyny/gojq) — jq query engine for the `jq` template function
 - [go-toml](https://github.com/pelletier/go-toml) — TOML parsing
 - [yaml.v3](https://gopkg.in/yaml.v3) — YAML parsing
 - [pflag](https://github.com/spf13/pflag) — POSIX-style flags
