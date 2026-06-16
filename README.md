@@ -135,13 +135,44 @@ Database:
 
 ## Template functions
 
-`gotmplt` exposes the full Sprig function set inside templates. To see all available functions:
+`gotmplt` exposes the full Sprig function set inside templates, plus a `jq` function for applying [jq](https://stedolan.github.io/jq/) queries to arbitrary data. To see all available functions:
 
 ```sh
 gotmplt --functions
 ```
 
-Full documentation: <https://masterminds.github.io/sprig/>
+Full Sprig documentation: <https://masterminds.github.io/sprig/>
+
+### `jq`
+
+```
+jq QUERY DATA
+```
+
+Applies a [gojq](https://github.com/itchyny/gojq) query string to `DATA` and returns the result. If the query produces a single value, that value is returned directly; if it produces multiple values, they are returned as a slice. This is useful for reshaping data inside a template — for example, turning a list of `{label, value}` objects into a map keyed by `label`:
+
+```gotemplate
+{{ with .fields | jq `[.[] | {"key": .label, "value": .value}] | from_entries` }}
+name  = {{ .name | quote }}
+email = {{ .email | quote }}
+{{ end }}
+```
+
+Given input data like:
+
+```json
+{ "fields": [
+  { "label": "name",  "value": "Alice" },
+  { "label": "email", "value": "alice@example.com" }
+] }
+```
+
+the template above renders:
+
+```
+name  = "Alice"
+email = "alice@example.com"
+```
 
 ## Testing
 

@@ -13,6 +13,7 @@ import (
 	sprig "github.com/Masterminds/sprig/v3"
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/text"
+	"github.com/itchyny/gojq"
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/spf13/pflag"
 	yaml "gopkg.in/yaml.v3"
@@ -179,6 +180,8 @@ func ParseOptions() (*Options, error) {
 
 	if functions {
 		fmt.Println("Available template functions:")
+		fmt.Println(" - 'jq' (query, data) applies a jq query to the given data and returns the result")
+		fmt.Println(" - includes all functions from the Sprig library")
 		fmt.Println("   see https://masterminds.github.io/sprig/ for details")
 		for _, name := range slices.Sorted(maps.Keys(sprig.TxtFuncMap())) {
 			fmt.Println(" -", name)
@@ -301,7 +304,36 @@ func (opts *Options) Template() (*template.Template, error) {
 		return nil, fmt.Errorf("failed to read template file %s: %w", opts.TemplateFile, err)
 	}
 	opts.Debugf("parsing template %s (%d bytes)", opts.TemplateFile, len(content))
-	tmpl, err := template.New(opts.TemplateFile).Funcs(sprig.TxtFuncMap()).Parse(string(content))
+	tmpl, err := template.
+		New(opts.TemplateFile).
+		Funcs(sprig.TxtFuncMap()).
+		Funcs(map[string]any{
+			"jq": func(query string, data any) (any, error) {
+				opts.Debugf("applying jq query %s on object %+v", query, data)
+				q, err := gojq.Parse(query)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse jq query: %w", err)
+				}
+				iter := q.Run(data)
+				var results []any
+				for {
+					v, ok := iter.Next()
+					if !ok {
+						break
+					}
+					if err, ok := v.(error); ok {
+						return nil, fmt.Errorf("jq query error: %w", err)
+					}
+					results = append(results, v)
+				}
+				opts.Debugf("jq query returned %d result(s)", len(results))
+				if len(results) == 1 {
+					return results[0], nil
+				}
+				return results, nil
+			},
+		}).
+		Parse(string(content))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template file %s: %w", opts.TemplateFile, err)
 	}

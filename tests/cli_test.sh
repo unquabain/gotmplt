@@ -154,6 +154,41 @@ run_fails "missing template file"        -- "$bin" -d "$examples/data.yaml" "$wo
 run_fails "invalid --set (no =)"         -- "$bin" -d "$examples/data.yaml" -s 'just-a-key' "$work/fmt.tmpl"
 run_fails "invalid --set (bad JSON RHS)" -- "$bin" -d "$examples/data.yaml" -s 'key={not json' "$work/fmt.tmpl"
 
+# --- jq template function ---
+cat >"$work/fields.json" <<'EOF'
+{ "fields": [
+  { "label": "name",  "value": "Alice" },
+  { "label": "email", "value": "alice@example.com" }
+] }
+EOF
+echo '{{ . | jq ".fields[0].label" }}' >"$work/jq_simple.tmpl"
+run "jq: simple field extraction" "name" -- \
+	"$bin" -d "$work/fields.json" "$work/jq_simple.tmpl"
+
+# Reshape list of {label, value} → map keyed by label, then look up fields.
+cat >"$work/jq_reshape.tmpl" <<'EOF'
+{{- with .fields | jq `[.[] | {"key": .label, "value": .value}] | from_entries` -}}
+{{ .name }}|{{ .email }}
+{{- end -}}
+EOF
+run "jq: reshape list to map" "Alice|alice@example.com" -- \
+	"$bin" -d "$work/fields.json" "$work/jq_reshape.tmpl"
+
+# Multiple results from jq are returned as a slice, iterable with range.
+echo '{"xs":[1,2,3]}' >"$work/xs.json"
+echo '{{ range (. | jq ".xs[]") }}{{ . }} {{ end }}' >"$work/jq_range.tmpl"
+run "jq: multiple results as slice" "1 2 3 " -- \
+	"$bin" -d "$work/xs.json" "$work/jq_range.tmpl"
+
+# Malformed jq query → template execution error → non-zero exit.
+echo '{{ . | jq "((" }}' >"$work/jq_bad.tmpl"
+run_fails "jq: malformed query rejected" -- \
+	"$bin" -d "$work/empty.json" "$work/jq_bad.tmpl"
+
+# `jq` should appear in --functions output alongside Sprig functions.
+run "jq: listed by --functions" "yes" -- \
+	bash -c "'$bin' --functions 2>/dev/null | grep -q \"'jq'\" && echo yes"
+
 # --- end-to-end render against the bundled template ---
 e2e="$("$bin" -d "$examples/data.yaml" -d "$examples/data.json" -d "$examples/data.toml" "$examples/template.txt" 2>/dev/null)"
 if echo "$e2e" | grep -q 'toml format' \

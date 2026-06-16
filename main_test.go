@@ -456,6 +456,75 @@ func TestOptions_Data_AppliesValues(t *testing.T) {
 	}
 }
 
+func renderTemplate(t *testing.T, body string, data Data) (string, error) {
+	t.Helper()
+	dir := t.TempDir()
+	path := writeFile(t, dir, "t.tmpl", body)
+	opts := &Options{TemplateFile: path, Interface: log.Log}
+	tmpl, err := opts.Template()
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func TestJQ_SingleValue(t *testing.T) {
+	data := Data{"contact": map[string]any{"name": "Alice"}}
+	got, err := renderTemplate(t, `{{ . | jq ".contact.name" }}`, data)
+	if err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	if got != "Alice" {
+		t.Errorf("got %q, want %q", got, "Alice")
+	}
+}
+
+func TestJQ_ReshapeToMap(t *testing.T) {
+	// Mirrors the documented use case: list of {label, value} → map keyed by label.
+	data := Data{"fields": []any{
+		map[string]any{"label": "name", "value": "Alice"},
+		map[string]any{"label": "email", "value": "alice@example.com"},
+	}}
+	tmpl := "{{ with .fields | jq `[.[] | {\"key\": .label, \"value\": .value}] | from_entries` }}{{ .name }}|{{ .email }}{{ end }}"
+	got, err := renderTemplate(t, tmpl, data)
+	if err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	if got != "Alice|alice@example.com" {
+		t.Errorf("got %q, want %q", got, "Alice|alice@example.com")
+	}
+}
+
+func TestJQ_MultipleResultsReturnedAsSlice(t *testing.T) {
+	data := Data{"xs": []any{float64(1), float64(2), float64(3)}}
+	// `.xs[]` produces three results; jq func should collect them.
+	got, err := renderTemplate(t, `{{ range (. | jq ".xs[]") }}{{ . }} {{ end }}`, data)
+	if err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	if got != "1 2 3 " {
+		t.Errorf("got %q, want %q", got, "1 2 3 ")
+	}
+}
+
+func TestJQ_ParseErrorPropagates(t *testing.T) {
+	if _, err := renderTemplate(t, `{{ . | jq "((" }}`, Data{}); err == nil {
+		t.Fatal("expected parse error from malformed jq query")
+	}
+}
+
+func TestJQ_RuntimeErrorPropagates(t *testing.T) {
+	// Indexing a number is a runtime error in jq.
+	data := Data{"n": float64(5)}
+	if _, err := renderTemplate(t, `{{ . | jq ".n.foo" }}`, data); err == nil {
+		t.Fatal("expected runtime error from jq indexing a number")
+	}
+}
+
 func TestEndToEnd_OverrideOrderRendersThroughTemplate(t *testing.T) {
 	// Higher-level check: data from multiple files reaches the template
 	// in the expected merged form.
